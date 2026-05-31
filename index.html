@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>職場避雷針 — 公司政策透明化儀表板</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" defer></script>
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <div class="db-wrap">
+
+    <!-- 頂部導覽列 -->
+    <div class="top-bar">
+      <div class="logo-area">
+        <span class="logo-badge">⚡ 職場避雷針</span>
+        <div>
+          <div class="page-title">公司政策透明化儀表板</div>
+          <div class="tag-line">年終 · 紅利 · 三節 · 文具 · 打卡 — 有比較才有選擇</div>
+        </div>
+      </div>
+      <button class="add-btn" onclick="openModal()">＋ 新增情報</button>
+    </div>
+
+    <!-- 行業篩選 -->
+    <div class="filter-row" id="filterRow">
+      <button class="filter-btn active" onclick="setFilter('all', this)">全部行業</button>
+      <button class="filter-btn" onclick="setFilter('科技業', this)">科技業</button>
+      <button class="filter-btn" onclick="setFilter('金融業', this)">金融業</button>
+      <button class="filter-btn" onclick="setFilter('傳產製造', this)">傳產製造</button>
+      <button class="filter-btn" onclick="setFilter('文創廣告', this)">文創廣告</button>
+      <button class="filter-btn" onclick="setFilter('零售服務', this)">零售服務</button>
+    </div>
+
+    <!-- 指標卡 -->
+    <div class="metrics-grid" id="metricsGrid"></div>
+
+    <!-- 圖表區塊 第一列 -->
+    <div class="grid-2">
+      <div class="chart-card">
+        <div class="chart-title">年終門檻要求</div>
+        <div class="chart-sub">各行業「需滿一年才有年終」比例</div>
+        <div class="legend">
+          <span class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>需滿一年</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#C0DD97;"></span>無此限制</span>
+        </div>
+        <div class="chart-wrap h200"><canvas id="c1" role="img" aria-label="各行業需滿一年才給年終的比例長條圖">各行業年終門檻統計</canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">紅利資格限制</div>
+        <div class="chart-sub">「需滿三年才可領紅利」分佈</div>
+        <div class="legend">
+          <span class="legend-item"><span class="legend-dot" style="background:#BA7517;"></span>需滿3年</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#378ADD;"></span>需滿1年</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#639922;"></span>無限制</span>
+        </div>
+        <div class="chart-wrap h200"><canvas id="c2" role="img" aria-label="各行業紅利資格限制圓餅圖">紅利門檻統計</canvas></div>
+      </div>
+    </div>
+
+    <!-- 圖表區塊 第二列 -->
+    <div class="grid-2">
+      <div class="chart-card">
+        <div class="chart-title">三節福利金額 <span class="chart-title-note">（全年三節合計，元）</span></div>
+        <div class="chart-sub">現金 vs 全聯禮券 — 點數換算後比較</div>
+        <div class="legend">
+          <span class="legend-item"><span class="legend-dot" style="background:#378ADD;"></span>現金</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#888780;"></span>全聯禮券</span>
+        </div>
+        <div class="chart-wrap h220"><canvas id="c3" role="img" aria-label="各公司三節福利金額長條圖">三節福利統計</canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">文具申請障礙指數</div>
+        <div class="chart-sub">越高越難申請（滿分 5 分）</div>
+        <div class="legend">
+          <span class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>高度阻攔（4-5）</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#BA7517;"></span>中度（2-3）</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#639922;"></span>正常（1）</span>
+        </div>
+        <div class="chart-wrap h220"><canvas id="c4" role="img" aria-label="各行業文具申請障礙雷達圖">文具障礙統計</canvas></div>
+      </div>
+    </div>
+
+    <!-- 打卡圖 -->
+    <div class="chart-card chart-full">
+      <div class="chart-title">打卡規定嚴格程度</div>
+      <div class="chart-sub">有無「先打卡再回工位」規定 — 各行業比例</div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>有「先打卡再回工位」規定</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#378ADD;"></span>常態要求特定時間打卡</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#C0DD97;"></span>正常打卡制度</span>
+      </div>
+      <div class="chart-wrap h180"><canvas id="c5" role="img" aria-label="各行業打卡規定嚴格程度堆疊長條圖">打卡規定統計</canvas></div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- 公司清單表格 -->
+    <div class="section-title">🏢 公司情報清單</div>
+    <div class="table-wrap">
+      <table class="company-table" id="companyTable">
+        <thead>
+          <tr>
+            <th>公司名稱</th>
+            <th>行業</th>
+            <th>年終門檻</th>
+            <th>紅利門檻</th>
+            <th>三節福利</th>
+            <th>文具申請</th>
+            <th>打卡規定</th>
+            <th>踩雷指數</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+
+  </div><!-- /.db-wrap -->
+
+  <!-- 新增情報 Modal -->
+  <div class="modal-bg" id="modalBg">
+    <div class="modal">
+      <h3>＋ 新增公司情報</h3>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>公司名稱</label>
+          <input id="f_name" placeholder="如：智合科技" />
+        </div>
+        <div class="form-row">
+          <label>行業類別</label>
+          <select id="f_industry">
+            <option>科技業</option>
+            <option>金融業</option>
+            <option>傳產製造</option>
+            <option>文創廣告</option>
+            <option>零售服務</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>有效起始日</label>
+          <input id="f_start" type="date" />
+        </div>
+        <div class="form-row">
+          <label>有效結束日</label>
+          <input id="f_end" type="date" />
+        </div>
+        <div class="form-row">
+          <label>年終門檻</label>
+          <select id="f_yearend">
+            <option value="0">無限制</option>
+            <option value="1">需滿半年</option>
+            <option value="2">需滿一年</option>
+            <option value="3">需滿一年，否則抽獎/禮物替代</option>
+            <option value="4">未滿整年無年終</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>紅利/分紅門檻</label>
+          <select id="f_bonus">
+            <option value="0">無限制</option>
+            <option value="1">需滿一年</option>
+            <option value="2">需滿三個計年度</option>
+            <option value="3">僅特定職級可領</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>三節形式</label>
+          <select id="f_3festival_type">
+            <option value="cash">現金</option>
+            <option value="voucher">全聯禮券</option>
+            <option value="mixed">現金＋禮券混合</option>
+            <option value="none">無</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>三節總金額（全年，元）</label>
+          <input id="f_3festival_amt" type="number" placeholder="如：3600" />
+        </div>
+        <div class="form-row">
+          <label>文具申請障礙</label>
+          <select id="f_stationary">
+            <option value="1">正常，普通文具可申請</option>
+            <option value="2">稍嚴，特殊文具需審批</option>
+            <option value="3">嚴格管控，以舊換新</option>
+            <option value="4">極度阻攔，需申請一週</option>
+            <option value="5">幾乎不可能申請到</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>打卡規定</label>
+          <select id="f_punch">
+            <option value="1">正常打卡制度</option>
+            <option value="2">常態要求固定時間打卡</option>
+            <option value="3">有先打卡再回工位情況</option>
+            <option value="4">強制先打卡再回工位</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal()">取消</button>
+        <button class="btn-primary" onclick="submitForm()">送出情報</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
