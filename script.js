@@ -1,7 +1,22 @@
 // =============================================
 //  職場避雷針 — 公司政策透明化儀表板
-//  script.js
+//  script.js  (Firebase Firestore 版)
 // =============================================
+
+// ---- Firebase 初始化 ----
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyCmlxQ8ov3fiOXN78XCyc2iV6ID2yc6T18",
+  authDomain:        "corporate-culture-web.firebaseapp.com",
+  projectId:         "corporate-culture-web",
+  storageBucket:     "corporate-culture-web.firebasestorage.app",
+  messagingSenderId: "659460346440",
+  appId:             "1:659460346440:web:fd86fbe2a99df896fafe7d",
+  measurementId:     "G-GHP19P16NN",
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
 // ---- 常數 / 對照表 ----
 
@@ -13,6 +28,7 @@ const YEAREND_LABELS = [
   '需滿一年',
   '滿一年（否則抽獎）',
   '未滿整年無年終',
+  '未滿整年以比例計算',
 ];
 
 const BONUS_LABELS = [
@@ -46,25 +62,84 @@ const PUNCH_LABELS = [
   '強制先打卡',
 ];
 
-// ---- 初始示範資料 ----
-
-const companies = [
-  { name: '智合科技',   industry: '科技業',   start: '2024-01-01', end: '2025-12-31', yearend: 2, bonus: 1, festivalType: 'mixed',   festivalAmt: 3000, stationary: 2, punch: 3 },
-  { name: '遠翔金控',   industry: '金融業',   start: '2023-06-01', end: '2024-12-31', yearend: 3, bonus: 2, festivalType: 'cash',    festivalAmt: 2500, stationary: 3, punch: 2 },
-  { name: '晨光文創',   industry: '文創廣告', start: '2023-09-01', end: '2024-08-31', yearend: 4, bonus: 3, festivalType: 'voucher', festivalAmt:  500, stationary: 4, punch: 4 },
-  { name: '台昇電子',   industry: '科技業',   start: '2024-03-01', end: '2025-12-31', yearend: 2, bonus: 1, festivalType: 'cash',    festivalAmt: 4800, stationary: 1, punch: 1 },
-  { name: '永豐投信',   industry: '金融業',   start: '2023-01-01', end: '2025-12-31', yearend: 0, bonus: 0, festivalType: 'cash',    festivalAmt: 6000, stationary: 1, punch: 1 },
-  { name: '旭日製造',   industry: '傳產製造', start: '2022-01-01', end: '2025-12-31', yearend: 2, bonus: 2, festivalType: 'voucher', festivalAmt: 1500, stationary: 3, punch: 3 },
-  { name: '星橋零售',   industry: '零售服務', start: '2024-01-01', end: '2025-12-31', yearend: 3, bonus: 1, festivalType: 'mixed',   festivalAmt: 2000, stationary: 2, punch: 2 },
-  { name: '彩虹廣告',   industry: '文創廣告', start: '2023-07-01', end: '2025-07-31', yearend: 4, bonus: 3, festivalType: 'none',    festivalAmt:    0, stationary: 5, punch: 4 },
-  { name: '宏達機械',   industry: '傳產製造', start: '2022-06-01', end: '2025-12-31', yearend: 2, bonus: 2, festivalType: 'voucher', festivalAmt: 2400, stationary: 4, punch: 3 },
-  { name: '捷速物流',   industry: '零售服務', start: '2023-01-01', end: '2025-12-31', yearend: 2, bonus: 1, festivalType: 'cash',    festivalAmt: 1200, stationary: 3, punch: 4 },
-];
-
 // ---- 狀態 ----
 
+let companies     = [];   // 從 Firestore 載入後填入
 let currentFilter = 'all';
-let charts = {};
+let charts        = {};
+
+// ---- Firestore：載入資料 ----
+
+/**
+ * 從 Firestore policies 集合讀取所有文件，
+ * 填入 companies 陣列後重新渲染整個畫面。
+ */
+function loadFromFirestore() {
+  showLoading(true);
+
+  db.collection('policies')
+    .orderBy('createdAt', 'desc')   // 最新的排最前；第一次上傳前可先建立複合索引，或改成 .get()
+    .get()
+    .then(snapshot => {
+      companies = snapshot.docs.map(doc => {
+        const d = doc.data();
+        return {
+          id:           doc.id,
+          name:         d.name         || '',
+          industry:     d.industry     || '科技業',
+          start:        d.start        || '',
+          end:          d.end          || '',
+          yearend:      Number(d.yearend)      || 0,
+          bonus:        Number(d.bonus)        || 0,
+          festivalType: d.festivalType  || 'none',
+          festivalAmt:  Number(d.festivalAmt)  || 0,
+          stationary:   Number(d.stationary)   || 1,
+          punch:        Number(d.punch)         || 1,
+        };
+      });
+
+      // 若資料庫是空的，寫入示範資料一次
+      if (companies.length === 0) {
+        seedDemoData();
+      } else {
+        renderAll();
+        showLoading(false);
+      }
+    })
+    .catch(err => {
+      console.error('Firestore 讀取失敗：', err);
+      showLoading(false);
+    });
+}
+
+/** 初次使用時將示範資料寫入 Firestore */
+function seedDemoData() {
+  const DEMO = [
+    { name: '智合科技', industry: '科技業',   start: '2024-01-01', end: '2025-12-31', yearend: 2, bonus: 1, festivalType: 'mixed',   festivalAmt: 3000, stationary: 2, punch: 3 },
+    { name: '遠翔金控', industry: '金融業',   start: '2023-06-01', end: '2024-12-31', yearend: 3, bonus: 2, festivalType: 'cash',    festivalAmt: 2500, stationary: 3, punch: 2 },
+    { name: '晨光文創', industry: '文創廣告', start: '2023-09-01', end: '2024-08-31', yearend: 4, bonus: 3, festivalType: 'voucher', festivalAmt:  500, stationary: 4, punch: 4 },
+    { name: '台昇電子', industry: '科技業',   start: '2024-03-01', end: '2025-12-31', yearend: 2, bonus: 1, festivalType: 'cash',    festivalAmt: 4800, stationary: 1, punch: 1 },
+    { name: '永豐投信', industry: '金融業',   start: '2023-01-01', end: '2025-12-31', yearend: 0, bonus: 0, festivalType: 'cash',    festivalAmt: 6000, stationary: 1, punch: 1 },
+    { name: '旭日製造', industry: '傳產製造', start: '2022-01-01', end: '2025-12-31', yearend: 2, bonus: 2, festivalType: 'voucher', festivalAmt: 1500, stationary: 3, punch: 3 },
+    { name: '星橋零售', industry: '零售服務', start: '2024-01-01', end: '2025-12-31', yearend: 3, bonus: 1, festivalType: 'mixed',   festivalAmt: 2000, stationary: 2, punch: 2 },
+    { name: '彩虹廣告', industry: '文創廣告', start: '2023-07-01', end: '2025-07-31', yearend: 4, bonus: 3, festivalType: 'none',    festivalAmt:    0, stationary: 5, punch: 4 },
+    { name: '宏達機械', industry: '傳產製造', start: '2022-06-01', end: '2025-12-31', yearend: 2, bonus: 2, festivalType: 'voucher', festivalAmt: 2400, stationary: 4, punch: 3 },
+    { name: '捷速物流', industry: '零售服務', start: '2023-01-01', end: '2025-12-31', yearend: 2, bonus: 1, festivalType: 'cash',    festivalAmt: 1200, stationary: 3, punch: 4 },
+  ];
+
+  const batch = db.batch();
+  DEMO.forEach(item => {
+    const ref = db.collection('policies').doc();
+    batch.set(ref, { ...item, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+  });
+
+  batch.commit()
+    .then(() => loadFromFirestore())   // 寫完再重新讀取
+    .catch(err => {
+      console.error('示範資料寫入失敗：', err);
+      showLoading(false);
+    });
+}
 
 // ---- 工具函式 ----
 
@@ -74,10 +149,6 @@ function getFiltered() {
     : companies.filter(c => c.industry === currentFilter);
 }
 
-/**
- * 計算踩雷指數 (0–10)
- * 根據年終門檻、紅利門檻、三節金額、文具阻攔、打卡規定各項加分
- */
 function calcRisk(c) {
   let score = 0;
   if (c.yearend >= 2) score += 2;
@@ -104,18 +175,35 @@ function pill(text, cls) {
   return `<span class="pill ${cls}">${text}</span>`;
 }
 
+/** 顯示 / 隱藏全畫面 loading 遮罩 */
+function showLoading(show) {
+  let mask = document.getElementById('loadingMask');
+  if (!mask) {
+    mask = document.createElement('div');
+    mask.id = 'loadingMask';
+    mask.style.cssText = `
+      position:fixed;inset:0;background:rgba(255,255,255,.75);
+      display:flex;align-items:center;justify-content:center;
+      font-size:15px;color:#555;z-index:9999;
+    `;
+    mask.textContent = '載入資料中…';
+    document.body.appendChild(mask);
+  }
+  mask.style.display = show ? 'flex' : 'none';
+}
+
 // ---- 渲染：指標卡 ----
 
 function renderMetrics() {
-  const data = getFiltered();
-  const total = data.length || 1; // avoid /0
+  const data  = getFiltered();
+  const total = data.length || 1;
 
-  const needYearend   = data.filter(c => c.yearend >= 2).length;
-  const needBonus3y   = data.filter(c => c.bonus >= 2).length;
-  const hasPunch      = data.filter(c => c.punch >= 3).length;
-  const highStat      = data.filter(c => c.stationary >= 4).length;
-  const avgFestival   = Math.round(data.reduce((s, c) => s + c.festivalAmt, 0) / total);
-  const avgRisk       = (data.reduce((s, c) => s + calcRisk(c), 0) / total).toFixed(1);
+  const needYearend = data.filter(c => c.yearend >= 2).length;
+  const needBonus3y = data.filter(c => c.bonus >= 2).length;
+  const hasPunch    = data.filter(c => c.punch >= 3).length;
+  const highStat    = data.filter(c => c.stationary >= 4).length;
+  const avgFestival = Math.round(data.reduce((s, c) => s + c.festivalAmt, 0) / total);
+  const avgRisk     = (data.reduce((s, c) => s + calcRisk(c), 0) / total).toFixed(1);
 
   document.getElementById('metricsGrid').innerHTML = `
     <div class="metric-card">
@@ -168,32 +256,32 @@ function renderTable() {
 
     const ye = c.yearend;
     const yePill =
-      ye === 0 ? pill('無限制', 'pill-green') :
-      ye === 1 ? pill('需滿半年', 'pill-amber') :
-      ye === 2 ? pill('需滿一年', 'pill-red') :
+      ye === 0 ? pill('無限制',     'pill-green') :
+      ye === 1 ? pill('需滿半年',   'pill-amber') :
+      ye === 2 ? pill('需滿一年',   'pill-red')   :
       ye === 3 ? pill('滿一年才有', 'pill-amber') :
                  pill('未滿整年無', 'pill-red');
 
     const bo = c.bonus;
     const boPill =
-      bo === 0 ? pill('無限制', 'pill-green') :
-      bo === 1 ? pill('需滿一年', 'pill-amber') :
-      bo === 2 ? pill('需三計年度', 'pill-red') :
-                 pill('僅特定職級', 'pill-red');
+      bo === 0 ? pill('無限制',    'pill-green') :
+      bo === 1 ? pill('需滿一年',  'pill-amber') :
+      bo === 2 ? pill('需三計年度','pill-red')   :
+                 pill('僅特定職級','pill-red');
 
     const ftClass =
-      c.festivalType === 'cash'    ? 'pill-blue' :
-      c.festivalType === 'none'    ? 'pill-red'  : 'pill-amber';
+      c.festivalType === 'cash'  ? 'pill-blue' :
+      c.festivalType === 'none'  ? 'pill-red'  : 'pill-amber';
     const festPill =
       `${pill(FESTIVAL_TYPE_LABELS[c.festivalType], ftClass)} $${c.festivalAmt.toLocaleString()}`;
 
-    const st = c.stationary;
+    const st     = c.stationary;
     const stPill =
       st <= 1 ? pill(STATIONARY_LABELS[st], 'pill-green') :
       st <= 3 ? pill(STATIONARY_LABELS[st], 'pill-amber') :
                 pill(STATIONARY_LABELS[st], 'pill-red');
 
-    const pu = c.punch;
+    const pu     = c.punch;
     const puPill =
       pu <= 1 ? pill(PUNCH_LABELS[pu], 'pill-green') :
       pu <= 2 ? pill(PUNCH_LABELS[pu], 'pill-amber') :
@@ -230,19 +318,17 @@ function destroyCharts() {
 function renderCharts() {
   destroyCharts();
 
-  const data     = getFiltered();
-  const indData  = INDUSTRIES.map(ind => data.filter(c => c.industry === ind));
+  const data    = getFiltered();
+  const indData = INDUSTRIES.map(ind => data.filter(c => c.industry === ind));
 
-  // 共用 Chart.js 選項
   const baseScaleOpts = {
-    grid: { color: 'rgba(128,128,128,0.1)' },
+    grid:  { color: 'rgba(128,128,128,0.1)' },
     ticks: { font: { size: 11 } },
   };
 
-  // ── C1：年終門檻（堆疊長條）──
-  const yearendRate    = indData.map(g => g.length ? Math.round(g.filter(c => c.yearend >= 2).length / g.length * 100) : 0);
-  const yearendNoRate  = yearendRate.map(v => 100 - v);
-
+  // C1：年終門檻
+  const yearendRate   = indData.map(g => g.length ? Math.round(g.filter(c => c.yearend >= 2).length / g.length * 100) : 0);
+  const yearendNoRate = yearendRate.map(v => 100 - v);
   charts.c1 = new Chart(document.getElementById('c1'), {
     type: 'bar',
     data: {
@@ -253,8 +339,7 @@ function renderCharts() {
       ],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
         x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 } } },
@@ -263,7 +348,7 @@ function renderCharts() {
     },
   });
 
-  // ── C2：紅利門檻（甜甜圈）──
+  // C2：紅利門檻
   charts.c2 = new Chart(document.getElementById('c2'), {
     type: 'doughnut',
     data: {
@@ -279,27 +364,25 @@ function renderCharts() {
       }],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       cutout: '62%',
       plugins: { legend: { display: false } },
     },
   });
 
-  // ── C3：三節金額（堆疊長條）──
+  // C3：三節金額
   const comp7 = data.slice(0, Math.min(7, data.length));
   charts.c3 = new Chart(document.getElementById('c3'), {
     type: 'bar',
     data: {
       labels: comp7.map(c => c.name.length > 4 ? c.name.slice(0, 4) + '…' : c.name),
       datasets: [
-        { label: '現金',    data: comp7.map(c => c.festivalType === 'cash' || c.festivalType === 'mixed' ? c.festivalAmt : 0), backgroundColor: '#378ADD' },
-        { label: '全聯禮券', data: comp7.map(c => c.festivalType === 'voucher' ? c.festivalAmt : 0),                           backgroundColor: '#888780' },
+        { label: '現金',    data: comp7.map(c => (c.festivalType === 'cash' || c.festivalType === 'mixed') ? c.festivalAmt : 0), backgroundColor: '#378ADD' },
+        { label: '全聯禮券', data: comp7.map(c => c.festivalType === 'voucher' ? c.festivalAmt : 0),                            backgroundColor: '#888780' },
       ],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
         x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 } } },
@@ -308,10 +391,9 @@ function renderCharts() {
     },
   });
 
-  // ── C4：文具障礙（長條，顏色依分數）──
+  // C4：文具障礙
   const stRates  = indData.map(g => g.length ? parseFloat((g.reduce((s, c) => s + c.stationary, 0) / g.length).toFixed(1)) : 0);
   const stColors = stRates.map(v => v >= 4 ? '#E24B4A' : v >= 3 ? '#BA7517' : '#639922');
-
   charts.c4 = new Chart(document.getElementById('c4'), {
     type: 'bar',
     data: {
@@ -319,8 +401,7 @@ function renderCharts() {
       datasets: [{ label: '障礙指數', data: stRates, backgroundColor: stColors }],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
         x: { grid: { display: false }, ticks: { font: { size: 11 } } },
@@ -329,11 +410,10 @@ function renderCharts() {
     },
   });
 
-  // ── C5：打卡規定（水平堆疊）──
+  // C5：打卡規定
   const punch3 = indData.map(g => g.length ? Math.round(g.filter(c => c.punch >= 3).length / g.length * 100) : 0);
   const punch2 = indData.map(g => g.length ? Math.round(g.filter(c => c.punch === 2).length / g.length * 100) : 0);
   const punch1 = punch3.map((p3, i) => Math.max(0, 100 - p3 - punch2[i]));
-
   charts.c5 = new Chart(document.getElementById('c5'), {
     type: 'bar',
     data: {
@@ -345,8 +425,7 @@ function renderCharts() {
       ],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       indexAxis: 'y',
       plugins: { legend: { display: false } },
       scales: {
@@ -371,11 +450,13 @@ function setFilter(f, btn) {
 function openModal()  { document.getElementById('modalBg').classList.add('open'); }
 function closeModal() { document.getElementById('modalBg').classList.remove('open'); }
 
+// ---- 新增情報：寫入 Firestore ----
+
 function submitForm() {
   const name = document.getElementById('f_name').value.trim();
   if (!name) { alert('請填寫公司名稱'); return; }
 
-  companies.push({
+  const newEntry = {
     name,
     industry:     document.getElementById('f_industry').value,
     start:        document.getElementById('f_start').value,
@@ -386,14 +467,31 @@ function submitForm() {
     festivalAmt:  parseInt(document.getElementById('f_3festival_amt').value) || 0,
     stationary:   parseInt(document.getElementById('f_stationary').value),
     punch:        parseInt(document.getElementById('f_punch').value),
-  });
+    createdAt:    firebase.firestore.FieldValue.serverTimestamp(),
+  };
 
-  // Reset form fields
-  document.getElementById('f_name').value = '';
-  document.getElementById('f_3festival_amt').value = '';
+  // 按鈕顯示「送出中…」避免重複點擊
+  const submitBtn = document.querySelector('.btn-primary');
+  submitBtn.disabled    = true;
+  submitBtn.textContent = '送出中…';
 
-  closeModal();
-  renderAll();
+  db.collection('policies')
+    .add(newEntry)
+    .then(() => {
+      // 重置表單
+      document.getElementById('f_name').value          = '';
+      document.getElementById('f_3festival_amt').value = '';
+      closeModal();
+      loadFromFirestore();   // 重新從資料庫讀取，確保畫面與 DB 同步
+    })
+    .catch(err => {
+      console.error('新增失敗：', err);
+      alert('新增失敗，請稍後再試。\n' + err.message);
+    })
+    .finally(() => {
+      submitBtn.disabled    = false;
+      submitBtn.textContent = '送出情報';
+    });
 }
 
 // ---- 主渲染 ----
@@ -404,5 +502,8 @@ function renderAll() {
   renderCharts();
 }
 
-// 初始化
-renderAll();
+// ---- 頁面入口：等 Chart.js 載入後再讀 Firestore ----
+
+window.addEventListener('load', () => {
+  loadFromFirestore();
+});
