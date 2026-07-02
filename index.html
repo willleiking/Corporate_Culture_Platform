@@ -1,4 +1,412 @@
-// Firebase 設定（使用您提供的 config）
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>職場避雷針 — 公司政策透明化儀表板（單一檔案版）</title>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    /* ===== 所有樣式（含深色模式） ===== */
+    :root {
+      --bg-page: #f4f7fc;
+      --card-bg: white;
+      --text-primary: #1e2a3e;
+      --text-secondary: #4a6272;
+      --border-light: #e2edf2;
+      --btn-bg: #eef2f5;
+      --btn-primary: #ff914d;
+      --btn-primary-hover: #e57a38;
+      --table-header: #f0f6fa;
+      --table-row-hover: #fefaf5;
+    }
+    body.dark {
+      --bg-page: #121826;
+      --card-bg: #1e293b;
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --border-light: #334155;
+      --btn-bg: #2d3a4e;
+      --table-header: #0f172a;
+      --table-row-hover: #1e293b;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; transition: background 0.2s, color 0.2s; }
+    body {
+      background: var(--bg-page);
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 1.5rem;
+      color: var(--text-primary);
+    }
+    .db-wrap { max-width: 1400px; margin: 0 auto; }
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .logo-area { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .logo-badge {
+      background: #ffc107;
+      color: #1e2a3e;
+      padding: 0.4rem 1rem;
+      border-radius: 40px;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+    .page-title { font-size: 1.3rem; font-weight: 700; }
+    .tag-line { font-size: 0.7rem; opacity: 0.7; }
+    .add-btn, .theme-toggle {
+      border: none;
+      padding: 0.4rem 1rem;
+      border-radius: 40px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .add-btn {
+      background: var(--btn-primary);
+      color: white;
+    }
+    .theme-toggle {
+      background: var(--btn-bg);
+      color: var(--text-primary);
+      margin-left: 0.3rem;
+    }
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 1.5rem;
+    }
+    .filter-btn {
+      background: var(--btn-bg);
+      border: none;
+      padding: 0.4rem 1rem;
+      border-radius: 40px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 0.8rem;
+      color: var(--text-primary);
+    }
+    .filter-btn.active {
+      background: var(--btn-primary);
+      color: white;
+    }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.8rem;
+      margin-bottom: 1.5rem;
+    }
+    .metric-card {
+      background: var(--card-bg);
+      border-radius: 20px;
+      padding: 0.8rem 1rem;
+      border: 1px solid var(--border-light);
+    }
+    .metric-title { font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); }
+    .metric-value { font-size: 1.6rem; font-weight: 700; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .chart-card {
+      background: var(--card-bg);
+      border-radius: 24px;
+      padding: 1rem;
+      border: 1px solid var(--border-light);
+    }
+    .chart-full { grid-column: span 2; }
+    .chart-title { font-weight: 700; font-size: 1rem; }
+    .chart-title-note { font-weight: normal; font-size: 0.7rem; color: var(--text-secondary); }
+    .chart-sub { font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.3rem; }
+    .legend {
+      display: flex;
+      gap: 0.8rem;
+      margin-bottom: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .legend-item { font-size: 0.65rem; display: inline-flex; align-items: center; gap: 0.2rem; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 10px; display: inline-block; }
+    .chart-wrap { position: relative; width: 100%; }
+    .h200 { height: 180px; }
+    .h220 { height: 200px; }
+    .h180 { height: 160px; }
+    .divider { margin: 1.5rem 0; border-color: var(--border-light); }
+    .section-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.8rem; }
+    .note { font-size: 0.65rem; font-weight: normal; }
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 20px;
+      border: 1px solid var(--border-light);
+      background: var(--card-bg);
+    }
+    .company-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .company-table th {
+      background: var(--table-header);
+      padding: 0.5rem 0.6rem;
+      text-align: left;
+      font-weight: 600;
+    }
+    .company-table td {
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .company-table tr:hover td { background: var(--table-row-hover); }
+    .modal-bg {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(3px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal {
+      background: var(--card-bg);
+      border-radius: 28px;
+      padding: 1.5rem;
+      width: 92%;
+      max-width: 650px;
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.8rem;
+      margin-top: 0.8rem;
+    }
+    .form-row { display: flex; flex-direction: column; gap: 0.2rem; }
+    .form-row.full-width { grid-column: span 2; }
+    label { font-size: 0.7rem; font-weight: 600; }
+    input, select, textarea {
+      background: var(--bg-page);
+      border: 1px solid var(--border-light);
+      padding: 0.4rem 0.6rem;
+      border-radius: 16px;
+      font-size: 0.8rem;
+      color: var(--text-primary);
+    }
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.8rem;
+      margin-top: 1rem;
+    }
+    .btn-cancel {
+      background: var(--btn-bg);
+      border: none;
+      padding: 0.4rem 1rem;
+      border-radius: 40px;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--btn-primary);
+      border: none;
+      padding: 0.4rem 1rem;
+      border-radius: 40px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .modal-note { font-size: 0.65rem; color: var(--text-secondary); margin-top: 0.6rem; }
+    .legal-footer {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-size: 0.65rem;
+      color: var(--text-secondary);
+    }
+    .sentiment-note {
+      font-size: 0.65rem;
+      color: var(--text-secondary);
+      margin-top: 0.4rem;
+      padding: 0.4rem;
+      background: var(--bg-page);
+      border-radius: 10px;
+    }
+    @media (max-width: 640px) {
+      body { padding: 0.8rem; }
+      .chart-full { grid-column: span 1; }
+      .form-grid { grid-template-columns: 1fr; }
+      .form-row.full-width { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+<div class="db-wrap">
+
+  <!-- 頂部導覽列 -->
+  <div class="top-bar">
+    <div class="logo-area">
+      <span class="logo-badge">⚡ 職場避雷針</span>
+      <div>
+        <div class="page-title">公司政策透明化儀表板</div>
+        <div class="tag-line">年終 · 紅利 · 三節 · 文具 · 打卡 · 員工觀感</div>
+      </div>
+    </div>
+    <div>
+      <button class="add-btn" id="openModalBtn">＋ 新增</button>
+      <button class="theme-toggle" id="themeToggle">🌓</button>
+    </div>
+  </div>
+
+  <!-- 行業篩選 -->
+  <div class="filter-row" id="filterRow">
+    <button class="filter-btn active" data-industry="all">全部</button>
+    <button class="filter-btn" data-industry="科技業">科技業</button>
+    <button class="filter-btn" data-industry="金融業">金融業</button>
+    <button class="filter-btn" data-industry="傳產製造">傳產製造</button>
+    <button class="filter-btn" data-industry="文創廣告">文創廣告</button>
+    <button class="filter-btn" data-industry="零售服務">零售服務</button>
+  </div>
+
+  <!-- 指標卡 -->
+  <div class="metrics-grid" id="metricsGrid"></div>
+
+  <!-- 圖表區塊 第一列 -->
+  <div class="grid-2">
+    <div class="chart-card">
+      <div class="chart-title">年終門檻</div>
+      <div class="chart-sub">需滿一年才有年終比例</div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>需滿一年</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#C0DD97;"></span>無限制</span>
+      </div>
+      <div class="chart-wrap h200"><canvas id="c1"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">紅利門檻</div>
+      <div class="chart-sub">需滿三年才可領紅利比例</div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#BA7517;"></span>需滿3年</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#378ADD;"></span>需滿1年</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#639922;"></span>無限制</span>
+      </div>
+      <div class="chart-wrap h200"><canvas id="c2"></canvas></div>
+    </div>
+  </div>
+
+  <!-- 圖表區塊 第二列 -->
+  <div class="grid-2">
+    <div class="chart-card">
+      <div class="chart-title">三節福利 <span class="chart-title-note">(全年平均，元)</span></div>
+      <div class="chart-sub">現金 vs 全聯禮券</div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#378ADD;"></span>現金</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#888780;"></span>全聯禮券</span>
+      </div>
+      <div class="chart-wrap h220"><canvas id="c3"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">文具障礙指數</div>
+      <div class="chart-sub">越高越難申請（滿分5）</div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>高度(4-5)</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#BA7517;"></span>中度(2-3)</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#639922;"></span>正常(1)</span>
+      </div>
+      <div class="chart-wrap h220"><canvas id="c4"></canvas></div>
+    </div>
+  </div>
+
+  <!-- 打卡圖表 -->
+  <div class="chart-card chart-full">
+    <div class="chart-title">打卡規定</div>
+    <div class="chart-sub">「先打卡再回工位」經驗比例</div>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>有經驗</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#378ADD;"></span>固定時間打卡</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#C0DD97;"></span>正常</span>
+    </div>
+    <div class="chart-wrap h180"><canvas id="c5"></canvas></div>
+  </div>
+
+  <!-- 觀感走勢圖 -->
+  <div class="chart-card chart-full">
+    <div class="chart-title">📈 員工觀感分數走勢圖 <span class="chart-title-note">（每月平均）</span></div>
+    <div class="chart-sub">分數越高評價越正面（1~5）</div>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-dot" style="background:#639922;"></span>優良(4-5)</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#BA7517;"></span>普通(2-3)</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>待改善(1-2)</span>
+    </div>
+    <div class="chart-wrap h220"><canvas id="sentimentChart"></canvas></div>
+    <div class="sentiment-note">分數說明：1=非常不滿意, 2=不滿意, 3=普通, 4=滿意, 5=非常滿意</div>
+  </div>
+
+  <hr class="divider" />
+
+  <!-- 表格 -->
+  <div class="section-title">🏢 公司清單 <span class="note">（員工匿名回饋）</span></div>
+  <div class="table-wrap">
+    <table class="company-table" id="companyTable">
+      <thead>
+        <tr><th>公司</th><th>行業</th><th>年終</th><th>紅利</th><th>三節</th><th>文具</th><th>打卡</th><th>觀感</th><th>踩雷</th></tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
+  <div class="legal-footer">
+    ⚠️ 本網站僅呈現員工自願提供之經驗統計，不代表該公司實際違法行為。<a href="#" id="showLegalModal">法律聲明</a>
+  </div>
+</div>
+
+<!-- 新增 Modal -->
+<div class="modal-bg" id="modalBg" style="display:none;">
+  <div class="modal">
+    <h3>＋ 新增公司經驗</h3>
+    <div class="form-grid">
+      <div class="form-row"><label>公司名稱 *</label><input id="f_name" placeholder="如：智合科技" /></div>
+      <div class="form-row"><label>行業</label><select id="f_industry"><option>科技業</option><option>金融業</option><option>傳產製造</option><option>文創廣告</option><option>零售服務</option></select></div>
+      <div class="form-row"><label>起始日</label><input id="f_start" type="date" /></div>
+      <div class="form-row"><label>結束日</label><input id="f_end" type="date" /></div>
+      <div class="form-row"><label>觀感分數 (1~5)</label><select id="f_sentiment"><option value="5">5 非常滿意</option><option value="4">4 滿意</option><option value="3" selected>3 普通</option><option value="2">2 不滿意</option><option value="1">1 非常不滿意</option></select></div>
+      <div class="form-row"><label>年終門檻</label><select id="f_yearend"><option value="0">無限制</option><option value="1">需滿半年</option><option value="2">需滿一年</option><option value="3">滿一年+抽獎</option><option value="4">未滿整年無</option></select></div>
+      <div class="form-row"><label>紅利門檻</label><select id="f_bonus"><option value="0">無限制</option><option value="1">需滿一年</option><option value="2">需滿三年</option><option value="3">僅特定職級</option></select></div>
+      <div class="form-row"><label>三節形式</label><select id="f_3festival_type"><option value="cash">現金</option><option value="voucher">全聯禮券</option><option value="mixed">現金+禮券</option><option value="none">無</option></select></div>
+      <div class="form-row"><label>三節總金額(元)</label><input id="f_3festival_amt" type="number" placeholder="3600" /></div>
+      <div class="form-row"><label>文具障礙</label><select id="f_stationary"><option value="1">正常</option><option value="2">稍嚴</option><option value="3">嚴格</option><option value="4">極度</option><option value="5">幾乎不可能</option></select></div>
+      <div class="form-row"><label>打卡規定</label><select id="f_punch"><option value="1">正常</option><option value="2">固定時間打卡</option><option value="3">曾有先打卡</option><option value="4">常被要求先打卡</option></select></div>
+      <div class="form-row full-width"><label>補充說明</label><textarea id="f_note" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" id="closeModalBtn">取消</button>
+      <button class="btn-primary" id="submitFormBtn">送出</button>
+    </div>
+  </div>
+</div>
+
+<!-- 法律聲明 Modal -->
+<div class="modal-bg" id="legalModalBg" style="display:none;">
+  <div class="modal">
+    <h3>📜 法律聲明</h3>
+    <div style="max-height:50vh; overflow-y:auto; font-size:0.85rem; line-height:1.6;">
+      <p><strong>1. 網站性質</strong><br>本網站為員工職場經驗統計平台，數據來自用戶自願匿名填寫，不代表法律指控。</p>
+      <p><strong>2. 禁止內容</strong><br>不得指名道姓攻擊特定自然人、不得上傳營業秘密、個資。</p>
+      <p><strong>3. 檢舉機制</strong><br>企業若認為資訊有誤，請來信 compliance@workplace-radar.com ，我們將查證處理。</p>
+      <p><strong>4. 免責</strong><br>本網站資訊僅供參考，不承擔用戶決策責任。</p>
+    </div>
+    <div class="modal-footer"><button class="btn-primary" id="closeLegalModal">關閉</button></div>
+  </div>
+</div>
+
+<script>
+// ===== Firebase 設定 =====
 const firebaseConfig = {
   apiKey: "AIzaSyCmlxQ8ov3fiOXN78XCyc2iV6ID2yc6T18",
   authDomain: "corporate-culture-web.firebaseapp.com",
@@ -8,102 +416,71 @@ const firebaseConfig = {
   appId: "1:659460346440:web:fd86fbe2a99df896fafe7d",
   measurementId: "G-GHP19P16NN"
 };
-
-// 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-// 全域變數
+// ===== 全域變數 =====
 let allPolicies = [];
 let currentIndustry = "all";
 let charts = {};
 
-// ========== 踩雷指數計算 ==========
-function computeRiskScore(policy) {
-  const yearEndScore = [0, 10, 20, 25, 30][policy.yearEndThreshold] || 0;
-  const bonusScore = [0, 10, 25, 20][policy.bonusThreshold] || 0;
-  const stationaryScore = (policy.stationaryScore - 1) * 5;
-  const punchScore = [0, 10, 25, 30][policy.punchRule] || 0;
-  let festivalDiscount = 0;
-  if (policy.festivalAmount && policy.festivalAmount > 0) {
-    festivalDiscount = Math.min(15, Math.floor(policy.festivalAmount / 200));
-  }
-  let raw = yearEndScore + bonusScore + stationaryScore + punchScore - festivalDiscount;
-  return Math.min(100, Math.max(0, raw));
+// ===== 踩雷指數 =====
+function computeRisk(p) {
+  const y = [0,10,20,25,30][p.yearEndThreshold]||0;
+  const b = [0,10,25,20][p.bonusThreshold]||0;
+  const s = (p.stationaryScore-1)*5;
+  const pu = [0,10,25,30][p.punchRule]||0;
+  let d = 0;
+  if(p.festivalAmount>0) d = Math.min(15, Math.floor(p.festivalAmount/200));
+  return Math.min(100, Math.max(0, y+b+s+pu-d));
 }
 
-// ========== 觀感走勢圖：計算每月平均 ==========
+// ===== 觀感走勢 =====
 function computeMonthlySentiment(policies) {
-  if (!policies || policies.length === 0) return { labels: [], data: [] };
-  const monthMap = new Map();
-  for (let p of policies) {
-    if (!p.sentimentScore || !p.validFrom) continue;
-    const monthKey = p.validFrom.substring(0, 7);
-    if (!monthMap.has(monthKey)) {
-      monthMap.set(monthKey, { sum: 0, count: 0 });
-    }
-    const entry = monthMap.get(monthKey);
-    entry.sum += p.sentimentScore;
-    entry.count += 1;
+  if(!policies||!policies.length) return {labels:[], data:[]};
+  const map = new Map();
+  for(let p of policies) {
+    if(!p.sentimentScore||!p.validFrom) continue;
+    const key = p.validFrom.substring(0,7);
+    if(!map.has(key)) map.set(key, {sum:0,count:0});
+    const e = map.get(key);
+    e.sum += p.sentimentScore;
+    e.count += 1;
   }
-  const sortedMonths = Array.from(monthMap.keys()).sort();
-  const data = sortedMonths.map(key => {
-    const entry = monthMap.get(key);
-    return Math.round((entry.sum / entry.count) * 10) / 10;
-  });
-  return { labels: sortedMonths, data };
+  const labels = Array.from(map.keys()).sort();
+  const data = labels.map(k => Math.round((map.get(k).sum/map.get(k).count)*10)/10);
+  return {labels, data};
 }
 
-// ========== 繪製觀感走勢圖 ==========
 function renderSentimentChart(policies) {
   const canvas = document.getElementById("sentimentChart");
-  if (!canvas) return;
-  const { labels, data } = computeMonthlySentiment(policies);
-  if (window.sentimentChartInstance) {
-    window.sentimentChartInstance.destroy();
-  }
-  if (labels.length === 0) {
+  if(!canvas) return;
+  const {labels, data} = computeMonthlySentiment(policies);
+  if(window.sentimentChartInstance) window.sentimentChartInstance.destroy();
+  if(labels.length===0) {
     const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#999";
-    ctx.font = "16px Inter, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("尚無觀感分數資料，請新增經驗時填寫分數", canvas.width/2, canvas.height/2);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="#999"; ctx.font="14px system-ui"; ctx.textAlign="center";
+    ctx.fillText("尚無觀感分數資料", canvas.width/2, canvas.height/2);
     return;
   }
   window.sentimentChartInstance = new Chart(canvas, {
-    type: "line",
-    data: {
-      labels: labels,
-      datasets: [{
-        label: "員工觀感平均分數 (1~5)",
-        data: data,
-        borderColor: "#378ADD",
-        backgroundColor: "rgba(55, 138, 221, 0.1)",
-        fill: true,
-        tension: 0.3,
-        pointBackgroundColor: data.map(v => {
-          if (v >= 4) return "#639922";
-          if (v >= 2.5) return "#BA7517";
-          return "#E24B4A";
-        }),
-        pointRadius: 5,
-        pointHoverRadius: 7,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { min: 0, max: 5.5, ticks: { stepSize: 0.5 }, title: { display: true, text: "觀感分數 (1~5)" } },
-        x: { title: { display: true, text: "月份 (YYYY-MM)" } }
-      }
-    }
+    type:"line",
+    data:{ labels, datasets:[{
+      label:"觀感平均分數",
+      data,
+      borderColor:"#378ADD",
+      backgroundColor:"rgba(55,138,221,0.1)",
+      fill:true,
+      tension:0.3,
+      pointBackgroundColor: data.map(v=>v>=4?"#639922":v>=2.5?"#BA7517":"#E24B4A"),
+      pointRadius:4
+    }]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ y:{min:0,max:5.5,ticks:{stepSize:0.5}} } }
   });
 }
 
-// ========== 將 Firestore Document 轉成前端格式 ==========
+// ===== 資料轉換 =====
 function mapDoc(doc) {
   const d = doc.data();
   return {
@@ -115,232 +492,175 @@ function mapDoc(doc) {
     yearEndThreshold: d.yearEndThreshold,
     bonusThreshold: d.bonusThreshold,
     festivalType: d.festivalType,
-    festivalAmount: d.festivalAmount || 0,
+    festivalAmount: d.festivalAmount||0,
     stationaryScore: d.stationaryScore,
     punchRule: d.punchRule,
-    sentimentScore: d.sentimentScore || null,
-    note: d.note || "",
+    sentimentScore: d.sentimentScore||null,
+    note: d.note||"",
     createdAt: d.createdAt,
   };
 }
 
-// ========== 刷新儀表板 ==========
+// ===== 渲染 =====
 function refreshDashboard() {
-  let filtered = allPolicies;
-  if (currentIndustry !== "all") {
-    filtered = filtered.filter(p => p.industry === currentIndustry);
-  }
+  let filtered = currentIndustry==="all" ? allPolicies : allPolicies.filter(p=>p.industry===currentIndustry);
   renderTable(filtered);
   renderMetrics(filtered);
-  updateAllCharts(filtered);
+  updateCharts(filtered);
   renderSentimentChart(filtered);
 }
 
-// ========== 表格渲染 ==========
 function renderTable(policies) {
   const tbody = document.getElementById("tableBody");
-  if (!tbody) return;
-  if (policies.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9">尚無資料，歡迎新增經驗</td></tr>';
-    return;
-  }
-  let html = "";
-  for (let p of policies) {
-    const risk = computeRiskScore(p);
-    const riskColor = risk >= 70 ? "#E24B4A" : risk >= 40 ? "#BA7517" : "#639922";
-    const sentiment = p.sentimentScore ? p.sentimentScore : "—";
+  if(!tbody) return;
+  if(!policies.length) { tbody.innerHTML='<tr><td colspan="9">尚無資料</td></tr>'; return; }
+  let html="";
+  for(let p of policies) {
+    const risk = computeRisk(p);
+    const color = risk>=70?"#E24B4A":risk>=40?"#BA7517":"#639922";
     html += `<tr>
-      <td>${escapeHtml(p.companyName)}</td>
-      <td>${escapeHtml(p.industry)}</td>
-      <td>${yearEndText(p.yearEndThreshold)}</td>
-      <td>${bonusText(p.bonusThreshold)}</td>
-      <td>${festivalText(p.festivalType, p.festivalAmount)}</td>
-      <td>${stationaryText(p.stationaryScore)}</td>
-      <td>${punchText(p.punchRule)}</td>
-      <td>${sentiment}</td>
-      <td style="color:${riskColor}; font-weight:bold;">${risk}</td>
+      <td>${esc(p.companyName)}</td>
+      <td>${esc(p.industry)}</td>
+      <td>${yText(p.yearEndThreshold)}</td>
+      <td>${bText(p.bonusThreshold)}</td>
+      <td>${fText(p.festivalType, p.festivalAmount)}</td>
+      <td>${sText(p.stationaryScore)}</td>
+      <td>${pText(p.punchRule)}</td>
+      <td>${p.sentimentScore||"—"}</td>
+      <td style="color:${color};font-weight:bold;">${risk}</td>
     </tr>`;
   }
   tbody.innerHTML = html;
 }
 
-// ========== 指標卡 ==========
 function renderMetrics(policies) {
-  const container = document.getElementById("metricsGrid");
-  if (!container) return;
+  const el = document.getElementById("metricsGrid");
+  if(!el) return;
   const total = policies.length;
-  const avgRisk = total ? Math.round(policies.reduce((s,p)=>s+computeRiskScore(p),0)/total) : 0;
-  const yearEndCount = policies.filter(p => p.yearEndThreshold >= 2).length;
-  const yrPercent = total ? Math.round(yearEndCount/total*100) : 0;
-  const avgSentiment = total ? Math.round(policies.reduce((s,p)=>s+(p.sentimentScore||0),0)/total*10)/10 : 0;
-  container.innerHTML = `
-    <div class="metric-card"><div class="metric-title">統計筆數</div><div class="metric-value">${total}</div></div>
-    <div class="metric-card"><div class="metric-title">平均踩雷指數</div><div class="metric-value">${avgRisk}</div></div>
-    <div class="metric-card"><div class="metric-title">需滿一年年終比例</div><div class="metric-value">${yrPercent}%</div></div>
-    <div class="metric-card"><div class="metric-title">平均觀感分數</div><div class="metric-value">${avgSentiment}</div></div>
+  const avgRisk = total ? Math.round(policies.reduce((s,p)=>s+computeRisk(p),0)/total) : 0;
+  const yr = total ? Math.round(policies.filter(p=>p.yearEndThreshold>=2).length/total*100) : 0;
+  const avgSent = total ? Math.round(policies.reduce((s,p)=>s+(p.sentimentScore||0),0)/total*10)/10 : 0;
+  el.innerHTML = `
+    <div class="metric-card"><div class="metric-title">筆數</div><div class="metric-value">${total}</div></div>
+    <div class="metric-card"><div class="metric-title">平均踩雷</div><div class="metric-value">${avgRisk}</div></div>
+    <div class="metric-card"><div class="metric-title">年終門檻%</div><div class="metric-value">${yr}%</div></div>
+    <div class="metric-card"><div class="metric-title">平均觀感</div><div class="metric-value">${avgSent}</div></div>
   `;
 }
 
-// ========== 所有圖表更新 ==========
-function updateAllCharts(policies) {
-  const industries = ["科技業","金融業","傳產製造","文創廣告","零售服務"];
+function updateCharts(policies) {
+  const inds = ["科技業","金融業","傳產製造","文創廣告","零售服務"];
+  const getData = (fn) => inds.map(i => { const g=policies.filter(p=>p.industry===i); return g.length ? fn(g) : 0; });
   
-  const yearEndRate = industries.map(ind => {
-    const group = policies.filter(p => p.industry === ind);
-    if(!group.length) return 0;
-    const need = group.filter(p => p.yearEndThreshold >= 2).length;
-    return Math.round(need/group.length*100);
-  });
+  const d1 = getData(g => Math.round(g.filter(p=>p.yearEndThreshold>=2).length/g.length*100));
   if(charts.c1) charts.c1.destroy();
-  charts.c1 = new Chart(document.getElementById("c1"), { type:"bar", data:{ labels:industries, datasets:[{ label:"需滿一年比例 (%)", data:yearEndRate, backgroundColor:"#E24B4A" }] } });
+  charts.c1 = new Chart(document.getElementById("c1"), {type:"bar", data:{labels:inds, datasets:[{label:"需滿一年%", data:d1, backgroundColor:"#E24B4A"}]}});
   
-  const bonus3Rate = industries.map(ind => {
-    const group = policies.filter(p => p.industry === ind);
-    if(!group.length) return 0;
-    const need3 = group.filter(p => p.bonusThreshold === 2).length;
-    return Math.round(need3/group.length*100);
-  });
+  const d2 = getData(g => Math.round(g.filter(p=>p.bonusThreshold===2).length/g.length*100));
   if(charts.c2) charts.c2.destroy();
-  charts.c2 = new Chart(document.getElementById("c2"), { type:"bar", data:{ labels:industries, datasets:[{ label:"需滿三年才可領紅利 (%)", data:bonus3Rate, backgroundColor:"#BA7517" }] } });
+  charts.c2 = new Chart(document.getElementById("c2"), {type:"bar", data:{labels:inds, datasets:[{label:"需滿三年%", data:d2, backgroundColor:"#BA7517"}]}});
   
-  const avgAmount = industries.map(ind => {
-    const group = policies.filter(p => p.industry === ind);
-    if(!group.length) return 0;
-    return Math.round(group.reduce((s,p)=>s+(p.festivalAmount||0),0)/group.length);
-  });
+  const d3 = getData(g => Math.round(g.reduce((s,p)=>s+(p.festivalAmount||0),0)/g.length));
   if(charts.c3) charts.c3.destroy();
-  charts.c3 = new Chart(document.getElementById("c3"), { type:"bar", data:{ labels:industries, datasets:[{ label:"三節平均總金額 (元)", data:avgAmount, backgroundColor:"#378ADD" }] } });
+  charts.c3 = new Chart(document.getElementById("c3"), {type:"bar", data:{labels:inds, datasets:[{label:"平均金額", data:d3, backgroundColor:"#378ADD"}]}});
   
-  const stationaryAvg = industries.map(ind => {
-    const group = policies.filter(p => p.industry === ind);
-    if(!group.length) return 0;
-    return group.reduce((s,p)=>s+p.stationaryScore,0)/group.length;
-  });
+  const d4 = getData(g => g.reduce((s,p)=>s+p.stationaryScore,0)/g.length);
   if(charts.c4) charts.c4.destroy();
-  charts.c4 = new Chart(document.getElementById("c4"), { type:"radar", data:{ labels:industries, datasets:[{ label:"文具申請障礙指數", data:stationaryAvg, backgroundColor:"rgba(227,75,74,0.2)", borderColor:"#E24B4A" }] } });
+  charts.c4 = new Chart(document.getElementById("c4"), {type:"radar", data:{labels:inds, datasets:[{label:"障礙指數", data:d4, backgroundColor:"rgba(227,75,74,0.2)", borderColor:"#E24B4A"}]}});
   
-  const badPunchRate = industries.map(ind => {
-    const group = policies.filter(p => p.industry === ind);
-    if(!group.length) return 0;
-    const bad = group.filter(p => p.punchRule >= 3).length;
-    return Math.round(bad/group.length*100);
-  });
+  const d5 = getData(g => Math.round(g.filter(p=>p.punchRule>=3).length/g.length*100));
   if(charts.c5) charts.c5.destroy();
-  charts.c5 = new Chart(document.getElementById("c5"), { type:"bar", data:{ labels:industries, datasets:[{ label:"曾有“先打卡再回工位”經驗比例 (%)", data:badPunchRate, backgroundColor:"#E24B4A" }] } });
+  charts.c5 = new Chart(document.getElementById("c5"), {type:"bar", data:{labels:inds, datasets:[{label:"先打卡經驗%", data:d5, backgroundColor:"#E24B4A"}]}});
 }
 
-// ========== 輔助文字轉換 ==========
-function yearEndText(v) { const map=["無限制","需滿半年","需滿一年","滿一年+抽獎","未滿整年無年終"]; return map[v]||"-"; }
-function bonusText(v) { const map=["無限制","需滿一年","需滿三個會計年度","僅特定職級"]; return map[v]||"-"; }
-function festivalText(type,amt) { const t={cash:"現金",voucher:"全聯禮券",mixed:"現金+禮券",none:"無"}[type]; return `${t || type} ${amt?amt+"元":""}`; }
-function stationaryText(v) { const map=["正常","稍嚴","嚴格管控","極度阻攔","幾乎不可能"]; return map[v-1]||"-"; }
-function punchText(v) { const map=["正常打卡","固定時間打卡","曾有先打卡再回工位","常被要求先打卡"]; return map[v-1]||"-"; }
-function escapeHtml(str) { if(!str) return ""; return str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+// ===== 輔助 =====
+function esc(s) { if(!s)return""; return s.replace(/[&<>]/g,m=>m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'); }
+function yText(v){ const m=["無限制","需滿半年","需滿一年","滿一年+抽獎","未滿整年無"]; return m[v]||"-"; }
+function bText(v){ const m=["無限制","需滿一年","需滿三年","僅特定職級"]; return m[v]||"-"; }
+function fText(t,a){ const m={cash:"現金",voucher:"全聯禮券",mixed:"現金+禮券",none:"無"}; return (m[t]||t)+(a?` ${a}元`:"") }
+function sText(v){ const m=["正常","稍嚴","嚴格","極度","幾乎不可能"]; return m[v-1]||"-"; }
+function pText(v){ const m=["正常打卡","固定時間打卡","曾有先打卡","常被要求先打卡"]; return m[v-1]||"-"; }
 
-// ========== 監聽 Firestore 即時更新 ==========
+// ===== Firebase 監聽 =====
 function subscribeFirestore() {
-  db.collection("policies").orderBy("createdAt", "desc").onSnapshot(snapshot => {
-    allPolicies = [];
-    snapshot.forEach(doc => allPolicies.push(mapDoc(doc)));
-    if(allPolicies.length === 0) {
-      insertSampleData();
-    } else {
-      refreshDashboard();
-    }
+  db.collection("policies").orderBy("createdAt","desc").onSnapshot(snapshot=>{
+    allPolicies=[];
+    snapshot.forEach(doc=>allPolicies.push(mapDoc(doc)));
+    if(!allPolicies.length) insertSample();
+    else refreshDashboard();
   });
 }
 
-// ========== 插入範例資料 ==========
-async function insertSampleData() {
-  const sample = {
-    companyName: "智合科技 (範例)",
-    industry: "科技業",
-    validFrom: "2024-01-01",
-    validTo: "2025-12-31",
-    yearEndThreshold: 2,
-    bonusThreshold: 2,
-    festivalType: "voucher",
-    festivalAmount: 3600,
-    stationaryScore: 3,
-    punchRule: 3,
-    sentimentScore: 4,
-    note: "此為示範數據，請新增真實經驗",
+async function insertSample() {
+  await db.collection("policies").add({
+    companyName:"智合科技 (範例)",
+    industry:"科技業",
+    validFrom:"2024-01-01",
+    validTo:"2025-12-31",
+    yearEndThreshold:2,
+    bonusThreshold:2,
+    festivalType:"voucher",
+    festivalAmount:3600,
+    stationaryScore:3,
+    punchRule:3,
+    sentimentScore:4,
+    note:"示範數據",
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  };
-  await db.collection("policies").add(sample);
+  });
 }
 
-// ========== 新增情報 ==========
-async function addPolicyFromForm() {
+// ===== 新增 =====
+async function addPolicy() {
   const name = document.getElementById("f_name").value.trim();
-  if(!name) { alert("請填寫公司名稱"); return; }
-  const industry = document.getElementById("f_industry").value;
-  const validFrom = document.getElementById("f_start").value;
-  const validTo = document.getElementById("f_end").value;
-  const sentiment = parseInt(document.getElementById("f_sentiment").value);
-  const yearEnd = parseInt(document.getElementById("f_yearend").value);
-  const bonus = parseInt(document.getElementById("f_bonus").value);
-  const festivalType = document.getElementById("f_3festival_type").value;
-  const festivalAmt = parseInt(document.getElementById("f_3festival_amt").value) || 0;
-  const stationary = parseInt(document.getElementById("f_stationary").value);
-  const punch = parseInt(document.getElementById("f_punch").value);
-  const note = document.getElementById("f_note").value;
-  
+  if(!name) { alert("請填公司名稱"); return; }
   await db.collection("policies").add({
     companyName: name,
-    industry: industry,
-    validFrom: validFrom,
-    validTo: validTo,
-    sentimentScore: sentiment,
-    yearEndThreshold: yearEnd,
-    bonusThreshold: bonus,
-    festivalType: festivalType,
-    festivalAmount: festivalAmt,
-    stationaryScore: stationary,
-    punchRule: punch,
-    note: note,
+    industry: document.getElementById("f_industry").value,
+    validFrom: document.getElementById("f_start").value,
+    validTo: document.getElementById("f_end").value,
+    sentimentScore: parseInt(document.getElementById("f_sentiment").value),
+    yearEndThreshold: parseInt(document.getElementById("f_yearend").value),
+    bonusThreshold: parseInt(document.getElementById("f_bonus").value),
+    festivalType: document.getElementById("f_3festival_type").value,
+    festivalAmount: parseInt(document.getElementById("f_3festival_amt").value)||0,
+    stationaryScore: parseInt(document.getElementById("f_stationary").value),
+    punchRule: parseInt(document.getElementById("f_punch").value),
+    note: document.getElementById("f_note").value,
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
   });
   closeModal();
-  document.getElementById("f_name").value = "";
-  document.getElementById("f_note").value = "";
+  document.getElementById("f_name").value="";
+  document.getElementById("f_note").value="";
 }
 
-// ========== Modal 控制 ==========
-function openModal() { document.getElementById("modalBg").style.display = "flex"; }
-function closeModal() { document.getElementById("modalBg").style.display = "none"; }
-function openLegalModal() { document.getElementById("legalModalBg").style.display = "flex"; }
-function closeLegalModal() { document.getElementById("legalModalBg").style.display = "none"; }
+// ===== Modal =====
+function openModal() { document.getElementById("modalBg").style.display="flex"; }
+function closeModal() { document.getElementById("modalBg").style.display="none"; }
+function openLegal() { document.getElementById("legalModalBg").style.display="flex"; }
+function closeLegal() { document.getElementById("legalModalBg").style.display="none"; }
 
-// ========== 綁定事件 ==========
-function bindEvents() {
-  document.querySelectorAll(".filter-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+// ===== 事件綁定 =====
+document.addEventListener("DOMContentLoaded", ()=>{
+  document.querySelectorAll(".filter-btn").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));
       btn.classList.add("active");
-      currentIndustry = btn.getAttribute("data-industry");
+      currentIndustry=btn.getAttribute("data-industry");
       refreshDashboard();
     });
   });
   document.getElementById("openModalBtn")?.addEventListener("click", openModal);
   document.getElementById("closeModalBtn")?.addEventListener("click", closeModal);
-  document.getElementById("submitFormBtn")?.addEventListener("click", addPolicyFromForm);
-  document.getElementById("showLegalModal")?.addEventListener("click", (e) => { e.preventDefault(); openLegalModal(); });
-  document.getElementById("closeLegalModal")?.addEventListener("click", closeLegalModal);
-  
-  const themeToggle = document.getElementById("themeToggle");
-  themeToggle?.addEventListener("click", () => {
-    document.body.classList.toggle("dark");
-  });
-  
-  window.onclick = (e) => {
-    if(e.target === document.getElementById("modalBg")) closeModal();
-    if(e.target === document.getElementById("legalModalBg")) closeLegalModal();
+  document.getElementById("submitFormBtn")?.addEventListener("click", addPolicy);
+  document.getElementById("showLegalModal")?.addEventListener("click", e=>{e.preventDefault(); openLegal();});
+  document.getElementById("closeLegalModal")?.addEventListener("click", closeLegal);
+  document.getElementById("themeToggle")?.addEventListener("click", ()=>document.body.classList.toggle("dark"));
+  window.onclick = e => {
+    if(e.target===document.getElementById("modalBg")) closeModal();
+    if(e.target===document.getElementById("legalModalBg")) closeLegal();
   };
-}
-
-// ========== 啟動 ==========
-window.addEventListener("DOMContentLoaded", () => {
-  bindEvents();
   subscribeFirestore();
 });
+</script>
+</body>
+</html>
